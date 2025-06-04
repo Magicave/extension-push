@@ -289,6 +289,3 @@ DEBUG:SCRIPT:
 ## Source code
 
 The source code is available on [GitHub](https://github.com/defold/extension-push)
-
-
-## API reference
