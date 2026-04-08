@@ -7,6 +7,7 @@
 #include "push_utils.h"
 
 #define LIB_NAME "push"
+static const char* DEFAULT_NOTIFICATION_CHANNEL_ID = "com.dynamo.android.notification_channel";
 
 struct ScheduledNotification
 {
@@ -15,6 +16,9 @@ struct ScheduledNotification
     char* title;
     char* message;
     char* payload;
+    char* channel_id;
+    char* channel_name;
+    char* channel_description;
     int priority;
 };
 
@@ -32,6 +36,7 @@ struct Push
     jmethodID            m_Stop;
     jmethodID            m_FlushStored;
     jmethodID            m_Register;
+    jmethodID            m_CreateChannel;
     jmethodID            m_Schedule;
     jmethodID            m_Cancel;
     jmethodID            m_CancelAllIssued;
@@ -81,6 +86,31 @@ static int Push_SetListener(lua_State* L)
     return 0;
 }
 
+static int Push_CreateChannel(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 0);
+
+    const char* channel_id = luaL_checkstring(L, 1);
+    const char* channel_name = luaL_checkstring(L, 2);
+    const char* channel_description = "";
+    if (lua_gettop(L) > 2 && lua_isstring(L, 3)) {
+        channel_description = lua_tostring(L, 3);
+    }
+
+    dmAndroid::ThreadAttacher threadAttacher;
+    JNIEnv* env = threadAttacher.GetEnv();
+
+    jstring jchannel_id = env->NewStringUTF(channel_id);
+    jstring jchannel_name = env->NewStringUTF(channel_name);
+    jstring jchannel_description = env->NewStringUTF(channel_description);
+    env->CallVoidMethod(g_Push.m_Push, g_Push.m_CreateChannel, dmGraphics::GetNativeAndroidActivity(), jchannel_id, jchannel_name, jchannel_description);
+    env->DeleteLocalRef(jchannel_description);
+    env->DeleteLocalRef(jchannel_name);
+    env->DeleteLocalRef(jchannel_id);
+
+    return 0;
+}
+
 static int Push_Schedule(lua_State* L)
 {
     int top = lua_gettop(L);
@@ -105,6 +135,9 @@ static int Push_Schedule(lua_State* L)
 
     // param: notification_settings
     int priority = 2;
+    const char* channel_id = DEFAULT_NOTIFICATION_CHANNEL_ID;
+    const char* channel_name = "";
+    const char* channel_description = "";
     // char* icon = 0;
     // char* sound = 0;
     if (top > 4) {
@@ -121,6 +154,30 @@ static int Push_Schedule(lua_State* L)
             } else if (priority > 2) {
                 priority = 2;
             }
+        }
+        lua_pop(L, 1);
+
+        // channel_id
+        lua_pushstring(L, "channel_id");
+        lua_gettable(L, 5);
+        if (lua_isstring(L, -1)) {
+            channel_id = lua_tostring(L, -1);
+        }
+        lua_pop(L, 1);
+
+        // channel_name
+        lua_pushstring(L, "channel_name");
+        lua_gettable(L, 5);
+        if (lua_isstring(L, -1)) {
+            channel_name = lua_tostring(L, -1);
+        }
+        lua_pop(L, 1);
+
+        // channel_description
+        lua_pushstring(L, "channel_description");
+        lua_gettable(L, 5);
+        if (lua_isstring(L, -1)) {
+            channel_description = lua_tostring(L, -1);
         }
         lua_pop(L, 1);
 
@@ -163,6 +220,9 @@ static int Push_Schedule(lua_State* L)
     sn.title     = strdup(title);
     sn.message   = strdup(message);
     sn.payload   = strdup(payload);
+    sn.channel_id = strdup(channel_id);
+    sn.channel_name = strdup(channel_name);
+    sn.channel_description = strdup(channel_description);
     sn.priority  = priority;
     if (g_Push.m_ScheduledNotifications.Remaining() == 0) {
         g_Push.m_ScheduledNotifications.SetCapacity(g_Push.m_ScheduledNotifications.Capacity()*2);
@@ -175,7 +235,13 @@ static int Push_Schedule(lua_State* L)
     jstring jtitle   = env->NewStringUTF(sn.title);
     jstring jmessage = env->NewStringUTF(sn.message);
     jstring jpayload = env->NewStringUTF(sn.payload);
-    env->CallVoidMethod(g_Push.m_Push, g_Push.m_Schedule, dmGraphics::GetNativeAndroidActivity(), sn.id, sn.timestamp / 1000, jtitle, jmessage, jpayload, sn.priority);
+    jstring jchannel_id = env->NewStringUTF(sn.channel_id);
+    jstring jchannel_name = env->NewStringUTF(sn.channel_name);
+    jstring jchannel_description = env->NewStringUTF(sn.channel_description);
+    env->CallVoidMethod(g_Push.m_Push, g_Push.m_Schedule, dmGraphics::GetNativeAndroidActivity(), sn.id, sn.timestamp / 1000, jtitle, jmessage, jpayload, sn.priority, jchannel_id, jchannel_name, jchannel_description);
+    env->DeleteLocalRef(jchannel_description);
+    env->DeleteLocalRef(jchannel_name);
+    env->DeleteLocalRef(jchannel_id);
     env->DeleteLocalRef(jpayload);
     env->DeleteLocalRef(jmessage);
     env->DeleteLocalRef(jtitle);
@@ -205,6 +271,18 @@ static void RemoveNotification(int id)
 
             if (sn.payload) {
                 free(sn.payload);
+            }
+
+            if (sn.channel_id) {
+                free(sn.channel_id);
+            }
+
+            if (sn.channel_name) {
+                free(sn.channel_name);
+            }
+
+            if (sn.channel_description) {
+                free(sn.channel_description);
             }
 
             g_Push.m_ScheduledNotifications.EraseSwap(i);
@@ -244,7 +322,7 @@ static int Push_Cancel(lua_State* L)
 
 static void NotificationToLua(lua_State* L, ScheduledNotification notification)
 {
-    lua_createtable(L, 0, 5);
+    lua_createtable(L, 0, 8);
 
     lua_pushstring(L, "seconds");
     lua_pushnumber(L, (notification.timestamp - dmTime::GetTime()) / 1000000.0);
@@ -264,6 +342,18 @@ static void NotificationToLua(lua_State* L, ScheduledNotification notification)
 
     lua_pushstring(L, "priority");
     lua_pushnumber(L, notification.priority);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "channel_id");
+    lua_pushstring(L, notification.channel_id);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "channel_name");
+    lua_pushstring(L, notification.channel_name);
+    lua_settable(L, -3);
+
+    lua_pushstring(L, "channel_description");
+    lua_pushstring(L, notification.channel_description);
     lua_settable(L, -3);
 
 }
@@ -340,6 +430,7 @@ static const luaL_reg Push_methods[] =
 {
     {"register", Push_Register},
     {"set_listener", Push_SetListener},
+    {"create_channel", Push_CreateChannel},
 
     {"schedule", Push_Schedule},
     {"cancel", Push_Cancel},
@@ -355,7 +446,7 @@ static const luaL_reg Push_methods[] =
 extern "C" {
 #endif
 
-JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIEnv* env, jobject, jint uid, jstring title, jstring message, jstring payload, jlong timestampMillis, jint priority)
+JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIEnv* env, jobject, jint uid, jstring title, jstring message, jstring payload, jlong timestampMillis, jint priority, jstring channelId, jstring channelName, jstring channelDescription)
 {
     uint64_t cur_time = dmTime::GetTime();
     uint64_t timestamp = 1000 * (uint64_t)timestampMillis;
@@ -366,6 +457,9 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     const char* c_title = "";
     const char* c_message = "";
     const char* c_payload = "";
+    const char* c_channel_id = DEFAULT_NOTIFICATION_CHANNEL_ID;
+    const char* c_channel_name = "";
+    const char* c_channel_description = "";
     if (title) {
         c_title = env->GetStringUTFChars(title, 0);
     }
@@ -375,6 +469,15 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     if (payload) {
         c_payload = env->GetStringUTFChars(payload, 0);
     }
+    if (channelId) {
+        c_channel_id = env->GetStringUTFChars(channelId, 0);
+    }
+    if (channelName) {
+        c_channel_name = env->GetStringUTFChars(channelName, 0);
+    }
+    if (channelDescription) {
+        c_channel_description = env->GetStringUTFChars(channelDescription, 0);
+    }
 
     ScheduledNotification sn;
     sn.id        = (uint64_t)uid;
@@ -382,6 +485,9 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     sn.title     = strdup(c_title);
     sn.message   = strdup(c_message);
     sn.payload   = strdup(c_payload);
+    sn.channel_id = strdup(c_channel_id);
+    sn.channel_name = strdup(c_channel_name);
+    sn.channel_description = strdup(c_channel_description);
     sn.priority  = (int)priority;
 
     if (g_Push.m_ScheduledNotifications.Remaining() == 0) {
@@ -398,6 +504,15 @@ JNIEXPORT void JNICALL Java_com_defold_push_PushJNI_addPendingNotifications(JNIE
     }
     if (c_payload) {
         env->ReleaseStringUTFChars(payload, c_payload);
+    }
+    if (channelId) {
+        env->ReleaseStringUTFChars(channelId, c_channel_id);
+    }
+    if (channelName) {
+        env->ReleaseStringUTFChars(channelName, c_channel_name);
+    }
+    if (channelDescription) {
+        env->ReleaseStringUTFChars(channelDescription, c_channel_description);
     }
 }
 
@@ -495,7 +610,8 @@ static dmExtension::Result AppInitializePush(dmExtension::AppParams* params)
     g_Push.m_Stop = env->GetMethodID(push_class, "stop", "()V");
     g_Push.m_FlushStored = env->GetMethodID(push_class, "flushStoredNotifications", "()V");
     g_Push.m_Register = env->GetMethodID(push_class, "register", "(Landroid/app/Activity;)V");
-    g_Push.m_Schedule = env->GetMethodID(push_class, "scheduleNotification", "(Landroid/app/Activity;IJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
+    g_Push.m_CreateChannel = env->GetMethodID(push_class, "createChannel", "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    g_Push.m_Schedule = env->GetMethodID(push_class, "scheduleNotification", "(Landroid/app/Activity;IJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     g_Push.m_Cancel = env->GetMethodID(push_class, "cancelNotification", "(Landroid/app/Activity;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
     g_Push.m_CancelAllIssued = env->GetMethodID(push_class, "cancelAllIssued", "(Landroid/app/Activity;)V");
 

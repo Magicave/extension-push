@@ -242,6 +242,12 @@ static int Push_SetBadgeCount(lua_State* L)
     return 0;
 }
 
+static int Push_CreateChannel(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 0);
+    return 0;
+}
+
 static int Push_Schedule(lua_State* L)
 {
     int top = lua_gettop(L);
@@ -461,6 +467,7 @@ static const luaL_reg Push_methods[] =
     {"register", Push_Register},
     {"set_listener", Push_SetListener},
     {"set_badge_count", Push_SetBadgeCount},
+    {"create_channel", Push_CreateChannel},
 
     // local
     {"schedule", Push_Schedule},

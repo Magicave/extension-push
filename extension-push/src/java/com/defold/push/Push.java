@@ -60,10 +60,17 @@ public class Push {
     public static final String SAVED_LOCAL_MESSAGE_NAME = "saved_local_message";
     public static final String NOTIFICATION_CHANNEL_ID = "com.dynamo.android.notification_channel";
     public static final String DEFOLD_NOTIFICATION = ".defold_notification";
+    private static final String EXTRA_CHANNEL_ID = "channelId";
+    private static final String EXTRA_CHANNEL_NAME = "channelName";
+    private static final String EXTRA_CHANNEL_DESCRIPTION = "channelDescription";
+    private static final String REMOTE_CHANNEL_ID = "channel_id";
+    private static final String REMOTE_CHANNEL_NAME = "channel_name";
+    private static final String REMOTE_CHANNEL_DESCRIPTION = "channel_description";
     private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
 
     private String senderIdFCM = "";
     private String applicationIdFCM = "";
+    private String projectTitle = "";
 
     private static Push instance;
     private static AlarmManager am = null;
@@ -136,20 +143,13 @@ public class Push {
     public void start(Activity activity, IPushListener listener, String senderId, String applicationId, String projectTitle) {
         Log.d(TAG, String.format("Push started (%s %s)", listener, senderId));
 
-        // Create the NotificationChannel, but only on API 26+ because
-        // the NotificationChannel class is new and not in the support library
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, projectTitle, NotificationManager.IMPORTANCE_DEFAULT);
-            channel.enableVibration(true);
-            channel.setDescription("");
-
-            NotificationManager notificationManager = (NotificationManager)activity.getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
         this.activity = activity;
         this.listener = listener;
         this.senderIdFCM = senderId;
         this.applicationIdFCM = applicationId;
+        this.projectTitle = projectTitle == null ? "" : projectTitle;
+
+        createChannelInternal(activity, NOTIFICATION_CHANNEL_ID, this.projectTitle, "");
     }
 
     public void stop() {
@@ -208,6 +208,55 @@ public class Push {
         return String.format("%s_%d", Push.SAVED_LOCAL_MESSAGE_NAME, uid);
     }
 
+    private String sanitizeChannelId(String channelId) {
+        if (channelId == null || channelId.length() == 0) {
+            return NOTIFICATION_CHANNEL_ID;
+        }
+        return channelId;
+    }
+
+    private String sanitizeChannelName(String channelId, String channelName) {
+        if (channelName != null && channelName.length() > 0) {
+            return channelName;
+        }
+
+        if (projectTitle != null && projectTitle.length() > 0 && NOTIFICATION_CHANNEL_ID.equals(channelId)) {
+            return projectTitle;
+        }
+
+        return channelId;
+    }
+
+    private String sanitizeChannelDescription(String channelDescription) {
+        if (channelDescription == null) {
+            return "";
+        }
+        return channelDescription;
+    }
+
+    private void createChannelInternal(Context context, String channelId, String channelName, String channelDescription) {
+        if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+
+        String resolvedChannelId = sanitizeChannelId(channelId);
+        NotificationChannel channel = new NotificationChannel(
+                resolvedChannelId,
+                sanitizeChannelName(resolvedChannelId, channelName),
+                NotificationManager.IMPORTANCE_DEFAULT);
+        channel.enableVibration(true);
+        channel.setDescription(sanitizeChannelDescription(channelDescription));
+
+        NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+
+    public void createChannel(Activity activity, String channelId, String channelName, String channelDescription) {
+        createChannelInternal(activity, channelId, channelName, channelDescription);
+    }
+
     private JSONObject readJson(Context context, String path) {
         try (BufferedReader r = new BufferedReader(new InputStreamReader(context.openFileInput(path)))) {
             String json = "";
@@ -240,7 +289,7 @@ public class Push {
         }
     }
 
-    private void putValues(Bundle extras, int uid, String title, String message, String payload, long timestamp, int priority, int iconSmall, int iconLarge) {
+    private void putValues(Bundle extras, int uid, String title, String message, String payload, long timestamp, int priority, int iconSmall, int iconLarge, String channelId, String channelName, String channelDescription) {
         extras.putInt("uid", uid);
         extras.putString("title", title);
         extras.putString("message", message);
@@ -249,6 +298,9 @@ public class Push {
         extras.putInt("smallIcon", iconSmall);
         extras.putInt("largeIcon", iconLarge);
         extras.putString("payload", payload);
+        extras.putString(EXTRA_CHANNEL_ID, sanitizeChannelId(channelId));
+        extras.putString(EXTRA_CHANNEL_NAME, channelName);
+        extras.putString(EXTRA_CHANNEL_DESCRIPTION, sanitizeChannelDescription(channelDescription));
     }
 
     private Bundle loadLocalPushNotification(Context context, int uid) {
@@ -259,7 +311,10 @@ public class Push {
         }
         Bundle extras = new Bundle();
         putValues(extras, jo.optInt("uid"), jo.optString("title"), jo.optString("message"), jo.optString("payload"), jo.optLong("timestamp"),
-                    jo.optInt("priority"), jo.optInt("smallIcon"), jo.optInt("largeIcon"));
+                    jo.optInt("priority"), jo.optInt("smallIcon"), jo.optInt("largeIcon"),
+                    jo.optString(EXTRA_CHANNEL_ID, NOTIFICATION_CHANNEL_ID),
+                    jo.optString(EXTRA_CHANNEL_NAME, null),
+                    jo.optString(EXTRA_CHANNEL_DESCRIPTION, ""));
         return extras;
     }
 
@@ -275,8 +330,13 @@ public class Push {
         PendingIntent contentIntent = PendingIntent.getActivity(appContext, uid, new_intent, flags);
 
         ApplicationInfo info = appContext.getApplicationInfo();
+        String channelId = sanitizeChannelId(extras.getString(EXTRA_CHANNEL_ID));
+        String channelName = extras.getString(EXTRA_CHANNEL_NAME);
+        String channelDescription = extras.getString(EXTRA_CHANNEL_DESCRIPTION);
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(appContext, Push.NOTIFICATION_CHANNEL_ID)
+        createChannelInternal(appContext, channelId, channelName, channelDescription);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(appContext, channelId)
             .setContentTitle(extras.getString("title"))
             .setContentText(extras.getString("message"))
             .setContentIntent(contentIntent)
@@ -335,11 +395,14 @@ public class Push {
                 return;
             }
             this.listener.addPendingNotifications(jo.optInt("uid"), jo.optString("title"), jo.optString("message"), jo.optString("payload"),
-                                                jo.optLong("timestamp"), jo.optInt("priority"));
+                                                jo.optLong("timestamp"), jo.optInt("priority"),
+                                                jo.optString(EXTRA_CHANNEL_ID, NOTIFICATION_CHANNEL_ID),
+                                                jo.optString(EXTRA_CHANNEL_NAME, null),
+                                                jo.optString(EXTRA_CHANNEL_DESCRIPTION, ""));
         }
     }
 
-    public void scheduleNotification(final Activity activity, int uid, long timestampMillis, String title, String message, String payload, int priority) {
+    public void scheduleNotification(final Activity activity, int uid, long timestampMillis, String title, String message, String payload, int priority, String channelId, String channelName, String channelDescription) {
 
         if (am == null) {
             am = (AlarmManager) activity.getSystemService(activity.ALARM_SERVICE);
@@ -347,12 +410,14 @@ public class Push {
 
         Context appContext = activity.getApplicationContext();
         Intent intent = new Intent(appContext, LocalNotificationReceiver.class);
+        String resolvedChannelId = sanitizeChannelId(channelId);
+        createChannelInternal(appContext, resolvedChannelId, channelName, channelDescription);
 
         Bundle extras = new Bundle();
         String packageName = activity.getPackageName();
         int iconSmall = activity.getResources().getIdentifier("push_icon_small", "drawable", packageName);
         int iconLarge = activity.getResources().getIdentifier("push_icon_large", "drawable", packageName);
-        putValues(extras, uid, title, message, payload, timestampMillis, priority, iconSmall, iconLarge);
+        putValues(extras, uid, title, message, payload, timestampMillis, priority, iconSmall, iconLarge, resolvedChannelId, channelName, channelDescription);
 
         storeLocalPushNotification(appContext, uid, extras);
 
@@ -702,7 +767,12 @@ public class Push {
             text = "New message";
         }
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+        String channelId = sanitizeChannelId(extras.get(REMOTE_CHANNEL_ID));
+        String channelName = extras.get(REMOTE_CHANNEL_NAME);
+        String channelDescription = extras.get(REMOTE_CHANNEL_DESCRIPTION);
+        createChannelInternal(context, channelId, channelName, channelDescription);
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setContentTitle(title)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)

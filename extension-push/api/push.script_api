@@ -152,6 +152,34 @@
 
 #*****************************************************************************************************
 
+  - name: create_channel
+    type: function
+    desc: Create or update an Android notification channel so the operating system can expose
+          separate notification categories for your app. Safe to call repeatedly.
+          [icon:android]
+
+    parameters:
+    - name: channel_id
+      type: string
+      desc: Stable Android notification channel id.
+
+    - name: channel_name
+      type: string
+      desc: User-visible channel name shown in Android notification settings.
+
+    - name: channel_description
+      type: string
+      desc: Optional user-visible description shown in Android notification settings.
+
+    examples:
+    - desc: |-
+            Create an Android notification channel before scheduling notifications:
+            ```lua
+            push.create_channel("mindset_streak_saver", "Streak saver reminders", "Reminders to protect your streak")
+            ```
+
+#*****************************************************************************************************
+
   - name: schedule
     type: function
     desc: Local push notifications are scheduled with this function.
@@ -201,6 +229,21 @@
               displayed. There are five priority levels, from -2 to 2 where -1 is the lowest
               priority and 2 the highest. Unless specified, a default priority level of 2 is used.
               [icon:android]
+
+      - name: channel_id
+        type: string
+        desc: Android notification channel id to post this notification on. The channel should
+              be created ahead of time with `push.create_channel()`. [icon:android]
+
+      - name: channel_name
+        type: string
+        desc: Optional Android channel name to use if the notification path needs to create or
+              refresh the channel before posting. [icon:android]
+
+      - name: channel_description
+        type: string
+        desc: Optional Android channel description to use if the notification path needs to
+              create or refresh the channel before posting. [icon:android]
       
 
     returns:
