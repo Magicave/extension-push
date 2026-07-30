@@ -9,6 +9,7 @@ import com.google.firebase.messaging.RemoteMessage;
 
 public class FirebaseMessagingService extends com.google.firebase.messaging.FirebaseMessagingService {
     private String TAG = "push-firebase";
+    private static final String REMOTE_SILENT_PUSH = "defold_silent_push";
     public FirebaseMessagingService() {
         super();
     }
@@ -21,7 +22,15 @@ public class FirebaseMessagingService extends com.google.firebase.messaging.Fire
         // Check if message contains a data payload.
         if (remoteMessage.getData().size() > 0) {
             Log.d(TAG, "Message data payload: " + remoteMessage.getData());
-            Push.getInstance().showNotification(this, remoteMessage.getData());
+            if ("1".equals(remoteMessage.getData().get(REMOTE_SILENT_PUSH))) {
+                Push.getInstance().onRemotePush(
+                    this,
+                    Push.toJson(remoteMessage.getData()).toString(),
+                    false
+                );
+            } else {
+                Push.getInstance().showNotification(this, remoteMessage.getData());
+            }
         }
     }
 
