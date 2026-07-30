@@ -66,6 +66,7 @@ public class Push {
     private static final String REMOTE_CHANNEL_ID = "channel_id";
     private static final String REMOTE_CHANNEL_NAME = "channel_name";
     private static final String REMOTE_CHANNEL_DESCRIPTION = "channel_description";
+    private static final String REMOTE_NOTIFICATION_GROUP_ID = "notification_group_id";
     private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
 
     private String senderIdFCM = "";
@@ -731,7 +732,10 @@ public class Push {
         Bundle extrasBundle = intent.getExtras();
         extrasBundle.putByte("remote", (byte)1);
 
-        int id = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
+        String notificationGroupId = extras.get(REMOTE_NOTIFICATION_GROUP_ID);
+        int id = notificationGroupId != null && !notificationGroupId.isEmpty()
+                ? notificationGroupId.hashCode()
+                : (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
         final int flags = createPendingIntentFlags(PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_ONE_SHOT);
         PendingIntent contentIntent = PendingIntent.getActivity(context, id, intent, flags);
 
