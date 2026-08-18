@@ -37,6 +37,7 @@ struct Push
     jmethodID            m_FlushStored;
     jmethodID            m_Register;
     jmethodID            m_CreateChannel;
+    jmethodID            m_DeleteChannel;
     jmethodID            m_Schedule;
     jmethodID            m_Cancel;
     jmethodID            m_CancelAllIssued;
@@ -106,6 +107,22 @@ static int Push_CreateChannel(lua_State* L)
     env->CallVoidMethod(g_Push.m_Push, g_Push.m_CreateChannel, dmGraphics::GetNativeAndroidActivity(), jchannel_id, jchannel_name, jchannel_description);
     env->DeleteLocalRef(jchannel_description);
     env->DeleteLocalRef(jchannel_name);
+    env->DeleteLocalRef(jchannel_id);
+
+    return 0;
+}
+
+static int Push_DeleteChannel(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 0);
+
+    const char* channel_id = luaL_checkstring(L, 1);
+
+    dmAndroid::ThreadAttacher threadAttacher;
+    JNIEnv* env = threadAttacher.GetEnv();
+
+    jstring jchannel_id = env->NewStringUTF(channel_id);
+    env->CallVoidMethod(g_Push.m_Push, g_Push.m_DeleteChannel, dmGraphics::GetNativeAndroidActivity(), jchannel_id);
     env->DeleteLocalRef(jchannel_id);
 
     return 0;
@@ -431,6 +448,7 @@ static const luaL_reg Push_methods[] =
     {"register", Push_Register},
     {"set_listener", Push_SetListener},
     {"create_channel", Push_CreateChannel},
+    {"delete_channel", Push_DeleteChannel},
 
     {"schedule", Push_Schedule},
     {"cancel", Push_Cancel},
@@ -611,6 +629,7 @@ static dmExtension::Result AppInitializePush(dmExtension::AppParams* params)
     g_Push.m_FlushStored = env->GetMethodID(push_class, "flushStoredNotifications", "()V");
     g_Push.m_Register = env->GetMethodID(push_class, "register", "(Landroid/app/Activity;)V");
     g_Push.m_CreateChannel = env->GetMethodID(push_class, "createChannel", "(Landroid/app/Activity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    g_Push.m_DeleteChannel = env->GetMethodID(push_class, "deleteChannel", "(Landroid/app/Activity;Ljava/lang/String;)V");
     g_Push.m_Schedule = env->GetMethodID(push_class, "scheduleNotification", "(Landroid/app/Activity;IJLjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     g_Push.m_Cancel = env->GetMethodID(push_class, "cancelNotification", "(Landroid/app/Activity;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
     g_Push.m_CancelAllIssued = env->GetMethodID(push_class, "cancelAllIssued", "(Landroid/app/Activity;)V");

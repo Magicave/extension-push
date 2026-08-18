@@ -58,7 +58,7 @@ public class Push {
     public static final String ACTION_FORWARD_PUSH = "com.defold.push.FORWARD";
     public static final String SAVED_PUSH_MESSAGE_NAME = "saved_push_message";
     public static final String SAVED_LOCAL_MESSAGE_NAME = "saved_local_message";
-    public static final String NOTIFICATION_CHANNEL_ID = "com.dynamo.android.notification_channel";
+    public static final String NOTIFICATION_CHANNEL_ID = "mindset_notifications";
     public static final String DEFOLD_NOTIFICATION = ".defold_notification";
     private static final String EXTRA_CHANNEL_ID = "channelId";
     private static final String EXTRA_CHANNEL_NAME = "channelName";
@@ -256,6 +256,17 @@ public class Push {
 
     public void createChannel(Activity activity, String channelId, String channelName, String channelDescription) {
         createChannelInternal(activity, channelId, channelName, channelDescription);
+    }
+
+    public void deleteChannel(Activity activity, String channelId) {
+        if (activity == null || channelId == null || channelId.trim().isEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+
+        NotificationManager notificationManager = (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (notificationManager != null) {
+            notificationManager.deleteNotificationChannel(channelId);
+        }
     }
 
     private JSONObject readJson(Context context, String path) {

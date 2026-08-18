@@ -180,6 +180,26 @@
 
 #*****************************************************************************************************
 
+  - name: delete_channel
+    type: function
+    desc: Delete an Android notification channel previously created by the app.
+          Has no effect on Android versions before 8.0 or on non-Android platforms.
+          [icon:android]
+
+    parameters:
+    - name: channel_id
+      type: string
+      desc: Stable Android notification channel id to delete.
+
+    examples:
+    - desc: |-
+            Delete an obsolete Android notification channel:
+            ```lua
+            push.delete_channel("mindset_streak_saver")
+            ```
+
+#*****************************************************************************************************
+
   - name: schedule
     type: function
     desc: Local push notifications are scheduled with this function.
