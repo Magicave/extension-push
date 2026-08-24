@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <UserNotifications/UserNotifications.h>
 
 #define LIB_NAME "push"
 
@@ -33,6 +34,7 @@ struct Push
     bool                        m_Initialized;
     dmScript::LuaCallbackInfo*  m_Callback;
     dmScript::LuaCallbackInfo*  m_Listener;
+    dmScript::LuaCallbackInfo*  m_AuthorizationStatusCallback;
     dmPush::CommandQueue        m_CommandQueue;
     dmPush::CommandQueue        m_SavedNotifications;
     int                         m_ScheduledID;
@@ -245,6 +247,71 @@ static int Push_SetBadgeCount(lua_State* L)
 static int Push_CreateChannel(lua_State* L)
 {
     DM_LUA_STACK_CHECK(L, 0);
+    return 0;
+}
+
+static const char* AuthorizationStatusToString(UNAuthorizationStatus status)
+{
+    switch (status)
+    {
+        case UNAuthorizationStatusNotDetermined: return "not_determined";
+        case UNAuthorizationStatusDenied: return "denied";
+        case UNAuthorizationStatusAuthorized: return "authorized";
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 120000
+        case UNAuthorizationStatusProvisional: return "provisional";
+#endif
+#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 140000
+        case UNAuthorizationStatusEphemeral: return "ephemeral";
+#endif
+        default: return "unknown";
+    }
+}
+
+static int Push_GetNotificationAuthorizationStatus(lua_State* L)
+{
+    DM_LUA_STACK_CHECK(L, 0);
+
+    if (!lua_isfunction(L, 1))
+    {
+        return luaL_error(L, "First argument must be a callback function.");
+    }
+    if (g_Push.m_AuthorizationStatusCallback)
+    {
+        return luaL_error(L, "A notification authorization status request is already in progress.");
+    }
+
+    g_Push.m_AuthorizationStatusCallback = dmScript::CreateCallback(L, 1);
+
+    if (@available(iOS 10.0, *))
+    {
+        [[UNUserNotificationCenter currentNotificationCenter]
+            getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings* settings) {
+                dmScript::LuaCallbackInfo* callback = g_Push.m_AuthorizationStatusCallback;
+                if (!callback)
+                {
+                    return;
+                }
+                g_Push.m_AuthorizationStatusCallback = 0;
+
+                dmPush::Command cmd;
+                cmd.m_Callback = callback;
+                cmd.m_Command = dmPush::COMMAND_TYPE_AUTHORIZATION_STATUS_RESULT;
+                cmd.m_Result = strdup(AuthorizationStatusToString(settings.authorizationStatus));
+                dmPush::QueuePush(&g_Push.m_CommandQueue, &cmd);
+            }];
+    }
+    else
+    {
+        UIUserNotificationSettings* settings = [[UIApplication sharedApplication] currentUserNotificationSettings];
+        const char* status = settings.types == UIUserNotificationTypeNone ? "denied" : "authorized";
+        dmPush::Command cmd;
+        cmd.m_Callback = g_Push.m_AuthorizationStatusCallback;
+        cmd.m_Command = dmPush::COMMAND_TYPE_AUTHORIZATION_STATUS_RESULT;
+        cmd.m_Result = strdup(status);
+        g_Push.m_AuthorizationStatusCallback = 0;
+        dmPush::QueuePush(&g_Push.m_CommandQueue, &cmd);
+    }
+
     return 0;
 }
 
@@ -471,6 +538,7 @@ static int Push_CancelAllIssued(lua_State* L)
 static const luaL_reg Push_methods[] =
 {
     {"register", Push_Register},
+    {"get_notification_authorization_status", Push_GetNotificationAuthorizationStatus},
     {"set_listener", Push_SetListener},
     {"set_badge_count", Push_SetBadgeCount},
     {"create_channel", Push_CreateChannel},
@@ -569,6 +637,9 @@ static dmExtension::Result FinalizePush(dmExtension::Params* params)
         dmScript::DestroyCallback(g_Push.m_Listener);
     g_Push.m_Listener = 0;
     g_Push.m_Callback = 0;
+    if (g_Push.m_AuthorizationStatusCallback)
+        dmScript::DestroyCallback(g_Push.m_AuthorizationStatusCallback);
+    g_Push.m_AuthorizationStatusCallback = 0;
     return dmExtension::RESULT_OK;
 }
 

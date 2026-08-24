@@ -82,6 +82,25 @@
 
 #*****************************************************************************************************
 
+  - name: get_notification_authorization_status
+    type: function
+    desc: Query the app's current notification authorization status from iOS.
+          This function is only available on iOS. [icon:ios]
+
+    parameters:
+    - name: callback
+      type: function
+      desc: Callback invoked with the current authorization status.
+      parameters:
+      - name: self
+        type: object
+        desc: The current object.
+      - name: status
+        type: string
+        desc: One of `not_determined`, `denied`, `authorized`, `provisional`, `ephemeral`, or `unknown`.
+
+#*****************************************************************************************************
+
   - name: set_listener
     type: function
     desc: Sets a listener function to listen to push notifications.

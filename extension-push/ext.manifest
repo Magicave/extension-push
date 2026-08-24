@@ -1,6 +1,15 @@
 name: PushExtExternal
 
 platforms:
+    armv7-ios:
+      context:
+        frameworks: ['Foundation', 'UIKit', 'UserNotifications']
+    arm64-ios:
+      context:
+        frameworks: ['Foundation', 'UIKit', 'UserNotifications']
+    x86_64-ios:
+      context:
+        frameworks: ['Foundation', 'UIKit', 'UserNotifications']
     android:
       context:
         aaptExtraPackages: ['androidx.core', 'com.google.android.gms', 'com.google.android.gms.common']

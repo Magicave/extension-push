@@ -89,6 +89,29 @@ static void HandlePushMessageResult(const dmPush::Command* cmd, bool local)
     dmScript::TeardownCallback(cmd->m_Callback);
 }
 
+static void HandleAuthorizationStatusResult(const dmPush::Command* cmd)
+{
+    if (!dmScript::IsCallbackValid(cmd->m_Callback))
+    {
+        return;
+    }
+
+    lua_State* L = dmScript::GetCallbackLuaContext(cmd->m_Callback);
+    DM_LUA_STACK_CHECK(L, 0);
+
+    if (!dmScript::SetupCallback(cmd->m_Callback))
+    {
+        return;
+    }
+
+    lua_pushstring(L, cmd->m_Result ? cmd->m_Result : "unknown");
+
+    int ret = dmScript::PCall(L, 2, 0);
+    (void)ret;
+
+    dmScript::TeardownCallback(cmd->m_Callback);
+}
+
 void dmPush::HandleCommand(dmPush::Command* cmd, void* ctx)
 {
     switch (cmd->m_Command)
@@ -96,12 +119,15 @@ void dmPush::HandleCommand(dmPush::Command* cmd, void* ctx)
     case dmPush::COMMAND_TYPE_REGISTRATION_RESULT:  HandleRegistrationResult(cmd); break;
     case dmPush::COMMAND_TYPE_PUSH_MESSAGE_RESULT:  HandlePushMessageResult(cmd, false); break;
     case dmPush::COMMAND_TYPE_LOCAL_MESSAGE_RESULT: HandlePushMessageResult(cmd, true); break;
+    case dmPush::COMMAND_TYPE_AUTHORIZATION_STATUS_RESULT: HandleAuthorizationStatusResult(cmd); break;
     default: assert(false);
     }
     free((void*)cmd->m_Result);
     free((void*)cmd->m_Error);
 
-    if (cmd->m_Command == dmPush::COMMAND_TYPE_REGISTRATION_RESULT && dmScript::IsCallbackValid(cmd->m_Callback))
+    if ((cmd->m_Command == dmPush::COMMAND_TYPE_REGISTRATION_RESULT ||
+         cmd->m_Command == dmPush::COMMAND_TYPE_AUTHORIZATION_STATUS_RESULT) &&
+        dmScript::IsCallbackValid(cmd->m_Callback))
         dmScript::DestroyCallback(cmd->m_Callback);
 }
 
